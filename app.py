@@ -64,25 +64,35 @@ def analyze_market_trend(headlines):
     except:
         return "AI 분석 실패 (API 키를 확인하세요)"
 
-# --- [함수 3] 사냥개: 랜덤 발굴 (Hunter) ---
+# --- [함수 3] 사냥개: 랜덤 발굴 (수정버전) ---
 def hunt_candidates():
-    # 1. 한국 전체 종목 리스트 가져오기 (약 2,700개)
-    # 캐싱을 쓰면 더 빠르지만, 실시간성을 위해 매번 호출 (약 2~3초 소요)
+    # 1. 한국 전체 종목 리스트 가져오기
     try:
         df_krx = fdr.StockListing('KRX')
-    except:
+    except Exception as e:
+        st.error(f"데이터 가져오기 실패: {e}")
         return []
 
+    # [🚨 핵심 수정] 데이터 청소 시간! 
+    # 글자로 된 숫자(예: "2,000")를 진짜 숫자(2000)로 바꿉니다.
+    for col in ['Close', 'Volume', 'ChagesRatio']:
+        # 만약 데이터가 숫자가 아니라면(object), 쉼표를 제거하고 숫자로 변환
+        if df_krx[col].dtype == 'object':
+            df_krx[col] = df_krx[col].astype(str).str.replace(',', '')
+        # 숫자로 강제 변환 (에러나는 건 NaN 처리)
+        df_krx[col] = pd.to_numeric(df_krx[col], errors='coerce')
+
+    # 변환하다가 깨진 데이터(NaN)는 버림
+    df_krx.dropna(subset=['Close', 'Volume', 'ChagesRatio'], inplace=True)
+
     # 2. [필터링] 잡주 걸러내기 & 활발한 종목 찾기
-    # - 거래량 5만 주 이상 (소외주 제외)
-    # - 주가 2,000원 이상 (동전주 제외)
     active_stocks = df_krx[
         (df_krx['Volume'] > 50000) & 
         (df_krx['Close'] > 2000) &
-        (df_krx['ChagesRatio'] > -5) # 폭락주 제외
+        (df_krx['ChagesRatio'] > -5)
     ]
     
-    # 3. [랜덤 뽑기] 활성 종목 중 20개를 무작위로 선정
+    # 3. [랜덤 뽑기]
     if len(active_stocks) > 20:
         candidates_pool = active_stocks.sample(n=20)
     else:
@@ -108,13 +118,12 @@ def hunt_candidates():
             if len(df) < 60: continue
 
             # [기술적 분석 필터]
-            # 1. 정배열 초입 (5일선 > 20일선)
-            # 2. 오늘 양봉 (종가 >= 시가)
             ma5 = df['Close'].rolling(5).mean().iloc[-1]
             ma20 = df['Close'].rolling(20).mean().iloc[-1]
             close = df['Close'].iloc[-1]
             open_p = df['Open'].iloc[-1]
             
+            # 정배열 & 양봉 조건
             if ma5 > ma20 and close >= open_p:
                 candidates.append({'code': code, 'name': name, 'df': df})
                 
@@ -122,7 +131,6 @@ def hunt_candidates():
             continue
             
     progress_bar.empty()
-    # 발견된 것 중 최대 3개만 리턴 (AI 과부하 방지)
     return candidates[:3]
 
 # --- [함수 4] 차트 이미지 생성 ---
