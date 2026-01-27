@@ -1,3 +1,4 @@
+import mplfinance as mpf
 import streamlit as st
 import FinanceDataReader as fdr
 import plotly.graph_objects as go
