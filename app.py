@@ -1,125 +1,72 @@
 import streamlit as st
 import matplotlib
-matplotlib.use('Agg') # <--- [핵심!] "창 띄우지 마(Non-Interactive)" 모드 설정
+matplotlib.use('Agg') # [중요] 가장 먼저 실행: 창 띄우기 금지 모드
 import matplotlib.pyplot as plt
-import mplfinance as mpf # matplotlib 설정 후에 불러와야 안전합니다
+import mplfinance as mpf
 import FinanceDataReader as fdr
 import google.generativeai as genai
 import io
 from PIL import Image
 from datetime import datetime, timedelta
 
-# --- [설정] 페이지 기본 설정 ---
-st.set_page_config(page_title="재미나이 AI 투자 비서", layout="wide")
+# --- 페이지 설정 ---
+st.set_page_config(page_title="재미나이 AI 투자 비서 (디버그 모드)", layout="wide")
 
-# --- [사이드바] 설정 ---
+# --- 사이드바 ---
 with st.sidebar:
     st.header("🔑 설정")
-    api_key = st.text_input("Google API Key를 입력하세요", type="password")
-    
+    api_key = st.text_input("Google API Key", type="password")
+    if api_key:
+        genai.configure(api_key=api_key)
+        # 무료 모델 강제 설정 (안전한 버전)
+        model = genai.GenerativeModel('gemini-2.0-flash-exp') 
 
-# --- [함수] 데이터 수집 및 차트 이미지 변환 ---
-def get_stock_data(code):
-    end_date = datetime.today()
-    start_date = end_date - timedelta(days=200) # 약 6개월치
-    df = fdr.DataReader(code, start_date, end_date)
-    return df
-
+# --- 차트 변환 함수 (디버깅 로그 포함) ---
 def df_to_image(df, stock_name):
-    # 메모리에 이미지를 저장할 공간 생성
     buf = io.BytesIO()
-    
-    # --- [핵심 업그레이드] ---
-    # 1. 캔들 차트 (type='candle')
-    # 2. 거래량 포함 (volume=True)
-    # 3. 이동평균선 3개 추가 (mav=(5, 20, 60) -> 5일, 20일, 60일선)
-    # 4. 스타일: 'yahoo' (미국식: 초록=상승, 빨강=하락) -> AI가 인식을 가장 잘함
-    mpf.plot(df, type='candle', volume=True, mav=(5, 20, 60),
-             title=f"{stock_name} (Daily)", style='yahoo',
-             savefig=buf)
-             
+    # 스타일 지정 없이 기본으로 그려봅니다 (스타일 다운로드 문제 배제)
+    mpf.plot(df, type='candle', volume=True, mav=(5, 20),
+             title=f"{stock_name}", savefig=buf)
     buf.seek(0)
     image = Image.open(buf)
     return image
 
+# --- 메인 로직 ---
+st.title("🛠️ 범인 색출 모드")
 
-# --- [함수] 재미나이(Gemini)에게 분석 요청 ---
-def analyze_chart_with_gemini(image):
+stock_code = st.text_input("종목 코드", value="005930")
+
+if st.button("🚀 분석 시작"):
     if not api_key:
-        return "API Key가 필요합니다."
-    
-    # 대장님의 투자 철학이 담긴 '5대 우선순위' 프롬프트
-    prompt = """
-    당신은 20년 경력의 베테랑 차트 분석가입니다. 
-    제공된 주식 차트 이미지를 보고 다음 5가지 기준으로 엄격하게 분석해주세요.
+        st.error("API 키를 입력해주세요!")
+    else:
+        st.write("👉 1단계: 데이터 가져오기 시도 중...")
+        try:
+            end_date = datetime.today()
+            start_date = end_date - timedelta(days=100)
+            df = fdr.DataReader(stock_code, start_date, end_date)
+            if df.empty:
+                st.error("데이터가 텅 비었습니다. 종목코드를 확인하세요.")
+                st.stop()
+            st.success(f"✅ 1단계 성공! 데이터 {len(df)}개 확보")
+        except Exception as e:
+            st.error(f"❌ 1단계 실패 (데이터): {e}")
+            st.stop()
 
-    1. **추세(Trend):** 현재 상승장인가, 하락장인가? (지지/저항 관점)
-    2. **거래량(Volume):** 의미 있는 거래량 변화가 있는가?
-    3. **이평선(MA):** 정배열인가, 역배열인가?
-    4. **과열 여부:** 단기적으로 너무 급등했거나 급락했는가?
-    5. **캔들 패턴:** 특이한 반전 신호가 보이는가?
+        st.write("👉 2단계: 차트 이미지 그리기 시도 중...")
+        try:
+            chart_image = df_to_image(df, "Test Stock")
+            st.success("✅ 2단계 성공! 차트 이미지 생성 완료")
+            st.image(chart_image, caption="AI가 볼 이미지 미리보기") # 화면에 찍어보기
+        except Exception as e:
+            st.error(f"❌ 2단계 실패 (차트 그리기): {e}")
+            st.stop()
 
-    최종적으로 다음 형식으로 답변하세요:
-    - **종합 점수:** (100점 만점 중 몇 점)
-    - **매수 의견:** (강력 매수 / 분할 매수 / 관망 / 매도 중 택 1)
-    - **매수 추천가:** (구체적 가격)
-    - **손절가:** (이 가격 깨지면 도망쳐야 함)
-    - **분석 요약:** (3줄 이내로 핵심만)
-    """
-    
-    # Gemini 2.0 Flash 모델 사용
-    model = genai.GenerativeModel('gemini-2.5-flash')
-    
-    with st.spinner('재미나이의 뇌가 풀가동 중입니다... (약 5초 소요)'):
-        response = model.generate_content([prompt, image])
-        return response.text
-
-# --- [메인 UI] ---
-st.title("📈 대장님의 AI 주식 비서")
-st.markdown("종목 코드를 입력하면 **재미나이**가 차트를 보고 분석해줍니다.")
-
-col1, col2 = st.columns([1, 3])
-
-with col1:
-    stock_code = st.text_input("종목 코드 입력", value="005930") # 기본값: 삼성전자
-    stock_name = st.text_input("종목명 (참고용)", value="삼성전자")
-    
-    if st.button("🚀 AI 분석 시작", type="primary", use_container_width=True):
-        if not api_key:
-            st.error("왼쪽 사이드바에 API Key를 먼저 입력해주세요!")
-        else:
-            try:
-                # 1. 데이터 가져오기
-                df = get_stock_data(stock_code)
-                
-                # 2. AI에게 보여줄 이미지 생성
-                chart_image = df_to_image(df, stock_name)
-                
-                # 3. AI 분석 요청
-                analysis_result = analyze_chart_with_gemini(chart_image)
-                
-                # 4. 결과 저장 (화면에 뿌리기 위해)
-                st.session_state['result'] = analysis_result
-                st.session_state['df'] = df
-                st.session_state['stock_name'] = stock_name
-                
-            except Exception as e:
-                st.error(f"에러가 발생했습니다: {e}")
-
-# 결과 출력 화면
-if 'result' in st.session_state:
-    st.divider()
-    r_col1, r_col2 = st.columns([1, 1])
-    
-    with r_col1:
-        st.subheader(f"🤖 재미나이 분석 리포트: {st.session_state['stock_name']}")
-        st.markdown(st.session_state['result']) # AI의 답변이 여기에 찍힘
-        
-    with r_col2:
-        # 대장님이 보시기 편한 인터랙티브 차트 (Plotly)
-        df = st.session_state['df']
-        fig = go.Figure(data=[go.Candlestick(x=df.index,
-                        open=df['Open'], high=df['High'],
-                        low=df['Low'], close=df['Close'])])
-        fig.update_layout(title=f"{st.session_state['stock_name']} 상세 차트", height=600)
-        st.plotly_chart(fig, use_container_width=True)
+        st.write("👉 3단계: 재미나이(AI)에게 전송 중...")
+        try:
+            prompt = "이 차트의 추세와 매매 전략을 한글로 짧게 3줄 요약해줘."
+            response = model.generate_content([prompt, chart_image])
+            st.success("✅ 3단계 성공! 분석 완료")
+            st.write(response.text)
+        except Exception as e:
+            st.error(f"❌ 3단계 실패 (AI): {e}")
