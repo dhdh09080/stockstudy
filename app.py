@@ -16,18 +16,6 @@ with st.sidebar:
     st.header("🔑 설정")
     api_key = st.text_input("Google API Key를 입력하세요", type="password")
     
-    # [추가된 부분: 모델 확인 버튼]
-    if api_key:
-        genai.configure(api_key=api_key)
-        if st.button("내 키로 쓸 수 있는 모델 보기"):
-            try:
-                models = genai.list_models()
-                st.write("사용 가능한 모델 목록:")
-                for m in models:
-                    if 'generateContent' in m.supported_generation_methods:
-                        st.code(m.name) # 여기서 나온 이름을 복사해서 코드에 쓰면 됩니다!
-            except Exception as e:
-                st.error(f"확인 실패: {e}")
 
 # --- [함수] 데이터 수집 및 차트 이미지 변환 ---
 def get_stock_data(code):
@@ -78,8 +66,8 @@ def analyze_chart_with_gemini(image):
     - **분석 요약:** (3줄 이내로 핵심만)
     """
     
-    # Gemini 1.5 Flash 모델 사용 (빠르고 저렴/무료)
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    # Gemini 2.0 Flash 모델 사용
+    model = genai.GenerativeModel('gemini-2.0-flash-latest')
     
     with st.spinner('재미나이의 뇌가 풀가동 중입니다... (약 5초 소요)'):
         response = model.generate_content([prompt, image])
