@@ -64,8 +64,10 @@ def analyze_market_trend(headlines):
     except:
         return "AI 분석 실패 (API 키를 확인하세요)"
 
-# --- [함수 3] 사냥개: 랜덤 발굴 (수정버전) ---
+# --- [함수 3] 사냥개: '강력 매수' 후보만 저격 (Sniper Mode) ---
 def hunt_candidates():
+    import random
+    
     # 1. 한국 전체 종목 리스트 가져오기
     try:
         df_krx = fdr.StockListing('KRX')
@@ -73,34 +75,34 @@ def hunt_candidates():
         st.error(f"데이터 가져오기 실패: {e}")
         return []
 
-    # [🚨 핵심 수정] 데이터 청소 시간! 
-    # 글자로 된 숫자(예: "2,000")를 진짜 숫자(2000)로 바꿉니다.
+    # 2. [데이터 청소] 숫자 변환 (쉼표 제거 등)
     for col in ['Close', 'Volume', 'ChagesRatio']:
-        # 만약 데이터가 숫자가 아니라면(object), 쉼표를 제거하고 숫자로 변환
         if df_krx[col].dtype == 'object':
             df_krx[col] = df_krx[col].astype(str).str.replace(',', '')
-        # 숫자로 강제 변환 (에러나는 건 NaN 처리)
         df_krx[col] = pd.to_numeric(df_krx[col], errors='coerce')
-
-    # 변환하다가 깨진 데이터(NaN)는 버림
+    
     df_krx.dropna(subset=['Close', 'Volume', 'ChagesRatio'], inplace=True)
 
-    # 2. [필터링] 잡주 걸러내기 & 활발한 종목 찾기
+    # 3. [1차 필터] 최소한의 자격 요건
+    # - 거래량 10만 주 이상, 주가 2,000원 이상
+    # - 오늘 이미 20% 이상 너무 오른 건 추격 매수 위험하므로 제외 (상한가 따라잡기 방지)
+    # - 등락률 3% 이상 상승 중인 놈 (힘이 있는 놈)
     active_stocks = df_krx[
-        (df_krx['Volume'] > 50000) & 
+        (df_krx['Volume'] > 100000) & 
         (df_krx['Close'] > 2000) &
-        (df_krx['ChagesRatio'] > -5)
+        (df_krx['ChagesRatio'] > 3) &  # 최소 3% 이상 오르고 있어야 함
+        (df_krx['ChagesRatio'] < 25)   # 이미 상한가 간 건 제외
     ]
     
-    # 3. [랜덤 뽑기]
-    if len(active_stocks) > 20:
-        candidates_pool = active_stocks.sample(n=20)
+    # 후보군을 랜덤으로 섞어서 30개만 집중 검사 (너무 많으면 느림)
+    if len(active_stocks) > 30:
+        candidates_pool = active_stocks.sample(n=30)
     else:
         candidates_pool = active_stocks
     
     candidates = []
     
-    progress_bar = st.progress(0, text="🐕 사냥개가 숲속(전체 종목)을 뒤지고 있습니다...")
+    progress_bar = st.progress(0, text="🔫 지금 당장 쏠 수 있는 '급등주' 조준 중...")
     total = len(candidates_pool)
     
     count = 0
@@ -112,26 +114,36 @@ def hunt_candidates():
             code = row['Code']
             name = row['Name']
             
-            # 최근 120일 데이터
-            df = fdr.DataReader(code, datetime.today() - timedelta(days=120), datetime.today())
+            # 최근 60일 데이터 (단기 승부)
+            df = fdr.DataReader(code, datetime.today() - timedelta(days=80), datetime.today())
             
-            if len(df) < 60: continue
+            if len(df) < 20: continue # 신규 상장주 제외
 
-            # [기술적 분석 필터]
+            # [★핵심 필터: 강력 매수 조건]
+            # 1. 거래량 폭발: 오늘 거래량이 전날 거래량의 200%(2배) 이상인가?
+            # 2. 정배열: 5일선 > 20일선
+            # 3. 양봉: 종가 > 시가
+            
+            vol_today = df['Volume'].iloc[-1]
+            vol_yesterday = df['Volume'].iloc[-2]
             ma5 = df['Close'].rolling(5).mean().iloc[-1]
             ma20 = df['Close'].rolling(20).mean().iloc[-1]
             close = df['Close'].iloc[-1]
             open_p = df['Open'].iloc[-1]
             
-            # 정배열 & 양봉 조건
-            if ma5 > ma20 and close >= open_p:
+            # 조건: (거래량 2배 폭등 OR 신고가 근처) AND 정배열 AND 양봉
+            if (vol_today > vol_yesterday * 2.0) and (ma5 > ma20) and (close >= open_p):
                 candidates.append({'code': code, 'name': name, 'df': df})
+                
+            # 3개 찾으면 즉시 종료 (빠른 결과)
+            if len(candidates) >= 3:
+                break
                 
         except:
             continue
             
     progress_bar.empty()
-    return candidates[:3]
+    return candidates
 
 # --- [함수 4] 차트 이미지 생성 ---
 def create_chart_image(df, stock_name):
