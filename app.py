@@ -67,7 +67,7 @@ def analyze_chart_with_gemini(image):
     """
     
     # Gemini 2.0 Flash 모델 사용
-    model = genai.GenerativeModel('gemini-2.0-flash-latest')
+    model = genai.GenerativeModel('gemini-2.0-flash')
     
     with st.spinner('재미나이의 뇌가 풀가동 중입니다... (약 5초 소요)'):
         response = model.generate_content([prompt, image])
