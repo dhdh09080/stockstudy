@@ -11,13 +11,23 @@ from datetime import datetime, timedelta
 # --- [설정] 페이지 기본 설정 ---
 st.set_page_config(page_title="재미나이 AI 투자 비서", layout="wide")
 
-# --- [사이드바] API 키 입력 (보안을 위해 화면에서 입력받음) ---
+# --- [사이드바] 설정 ---
 with st.sidebar:
     st.header("🔑 설정")
     api_key = st.text_input("Google API Key를 입력하세요", type="password")
+    
+    # [추가된 부분: 모델 확인 버튼]
     if api_key:
         genai.configure(api_key=api_key)
-    st.info("API Key는 저장되지 않으니 안심하세요.")
+        if st.button("내 키로 쓸 수 있는 모델 보기"):
+            try:
+                models = genai.list_models()
+                st.write("사용 가능한 모델 목록:")
+                for m in models:
+                    if 'generateContent' in m.supported_generation_methods:
+                        st.code(m.name) # 여기서 나온 이름을 복사해서 코드에 쓰면 됩니다!
+            except Exception as e:
+                st.error(f"확인 실패: {e}")
 
 # --- [함수] 데이터 수집 및 차트 이미지 변환 ---
 def get_stock_data(code):
