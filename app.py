@@ -25,22 +25,22 @@ def get_stock_data(code):
     return df
 
 def df_to_image(df, stock_name):
-    # AI에게 보여줄 '깔끔한 이미지'를 Matplotlib으로 그립니다.
-    # (Plotly는 인터랙티브라 AI에게 이미지로 넘기기 까다로워서, 분석용 이미지는 따로 만듭니다)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # 캔들차트 대신 종가선과 거래량을 간단히 그립니다 (AI는 패턴을 잘 봅니다)
-    ax.plot(df.index, df['Close'], label='Price', color='black')
-    ax.set_title(f"{stock_name} Chart Analysis")
-    ax.grid(True)
-    
-    # 이미지를 메모리(버퍼)에 저장
+    # 메모리에 이미지를 저장할 공간 생성
     buf = io.BytesIO()
-    plt.savefig(buf, format='png')
+    
+    # --- [핵심 업그레이드] ---
+    # 1. 캔들 차트 (type='candle')
+    # 2. 거래량 포함 (volume=True)
+    # 3. 이동평균선 3개 추가 (mav=(5, 20, 60) -> 5일, 20일, 60일선)
+    # 4. 스타일: 'yahoo' (미국식: 초록=상승, 빨강=하락) -> AI가 인식을 가장 잘함
+    mpf.plot(df, type='candle', volume=True, mav=(5, 20, 60),
+             title=f"{stock_name} (Daily)", style='yahoo',
+             savefig=buf)
+             
     buf.seek(0)
     image = Image.open(buf)
-    plt.close(fig) 
     return image
+
 
 # --- [함수] 재미나이(Gemini)에게 분석 요청 ---
 def analyze_chart_with_gemini(image):
