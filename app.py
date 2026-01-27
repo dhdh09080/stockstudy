@@ -19,7 +19,7 @@ with st.sidebar:
     if api_key:
         genai.configure(api_key=api_key)
         # 무료 모델 강제 설정 (안전한 버전)
-        model = genai.GenerativeModel('gemini-2.0-flash-exp') 
+        model = genai.GenerativeModel('gemini-2.5-flash')
 
 # --- 차트 변환 함수 (디버깅 로그 포함) ---
 def df_to_image(df, stock_name):
