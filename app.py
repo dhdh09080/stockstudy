@@ -1,10 +1,10 @@
-import mplfinance as mpf
 import streamlit as st
-import FinanceDataReader as fdr
-import plotly.graph_objects as go
-import pandas as pd
-import google.generativeai as genai
+import matplotlib
+matplotlib.use('Agg') # <--- [핵심!] "창 띄우지 마(Non-Interactive)" 모드 설정
 import matplotlib.pyplot as plt
+import mplfinance as mpf # matplotlib 설정 후에 불러와야 안전합니다
+import FinanceDataReader as fdr
+import google.generativeai as genai
 import io
 from PIL import Image
 from datetime import datetime, timedelta
